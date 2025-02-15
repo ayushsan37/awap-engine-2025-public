@@ -7,6 +7,31 @@ from src.units import Unit
 from src.buildings import Building
 
 class BotPlayer(Player):
+
+    def attack_units(rc: RobotController, unit_list):
+        good_guys = []
+        bad_guys = []
+        for units in unit_list:
+            if rc.get_team_of_unit(units.id) == rc.get_enemy_team():
+                bad_guys.append(units)
+            else: 
+                good_guys.append(units)
+        for guy in good_guys:
+            for badg in bad_guys:
+                if(rc.can_unit_attack_building(guy.id, badg.id)):
+                    rc.unit_attack_unit(guy.id, badg.id)
+
+    def defend_farms(rc: RobotController, x):
+        num_units = 0
+        for u in x:
+            if rc.get_team_of_unit(u.id) == rc.get_enemy_team():
+                num_units+=1
+        buildings = rc.get_buildings(rc.get_ally_team)
+        for i in buildings:
+            if isinstance(i, BuildingType.FARM_1):
+                rc.spawn_unit(UnitType.Knight, i.id)
+        
+
     def __init__(self, map: Map):
         self.built_explorer = False  # Track if exploration building is placed
         self.farms_built = 0  # Track farm count
@@ -16,6 +41,8 @@ class BotPlayer(Player):
         turn = rc.get_turn()
         balance = rc.get_balance(rc.get_ally_team())
         buildings = rc.get_buildings(rc.get_ally_team())
+        
+            
 
         # Build farms early for economy
         if self.farms_built < 2 and balance >= 30:
@@ -28,7 +55,7 @@ class BotPlayer(Player):
 
         # Build an explorer building to train troops
         if not self.built_explorer and balance >= 100:
-            possible = rc.get_building_placeable_map
+            possible = rc.get_building_placeable_map()
             dist = 1000
             place_x = -1
             place_y = -1
