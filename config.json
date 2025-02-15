@@ -2,7 +2,7 @@
     "players": [
         {
             "blue": "attack_bot_v1",
-            "red": "squire_bot"
+            "red": "best_bot"
         }
     ],
     "map": "scenic_backdrop"
