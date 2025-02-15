@@ -276,7 +276,7 @@ class RobotController:
         if building.team != self.__team:
             return False
 
-        #checks if building can spawn unit_type
+        #checks if building can spawn unit_type (farms can spawn most ground units)
         if unit_type.spawnable_buildings is not None and building.type not in unit_type.spawnable_buildings:
             return False
         
@@ -318,6 +318,10 @@ class RobotController:
         
         #checks for enough funds
         if self.__game_state.balance[self.__team] < building_type.cost:
+            return False
+        
+        #explorer building must be built 10 blocks away from main castle
+        if building_type == BuildingType.EXPLORER_BUILDING and self.get_chebyshev_distance(x, y, self.__game_state.map.castle_locs[self.__team][0], self.__game_state.map.castle_locs[self.__team][1]) <= 10:
             return False
         
         return True
@@ -677,27 +681,26 @@ class RobotController:
         attacking_unit.turn_actions_remaining -= 1
 
         #damage opponent's units
-        dead_units = [] #indices to delete
-        for i in range(len(opponent_units_hit)):
+        i = 0
+        while i < len(opponent_units_hit):
             unit_id_hit = opponent_units_hit[i]
             #if opponent unit killed, then delete it from the list because they cannot retaliate
             if self.__game_state.damage_unit(unit_id_hit, attacking_unit.damage):
-                dead_units.append(i) #delete it here to not mess up the indexing
-
-        for i in dead_units:
-            del opponent_units_hit[i]
+                del opponent_units_hit[i] #delete it here to not mess up the indexing
+                i -= 1
+            i += 1
+            
 
 
         #damage opponent's buildings
-        dead_buildings = [] #indices to delete
-        for i in range(len(opponent_buildings_hit)):
+        i = 0
+        while i < len(opponent_buildings_hit): #len dynamically changes
             building_id_hit = opponent_buildings_hit[i]
             #if opponent building defeated, then delete from the list because they cannot retaliate
             if self.__game_state.damage_building(building_id_hit, attacking_unit.damage):
-                dead_buildings.append(i)
-
-        for i in dead_buildings:
-            del opponent_buildings_hit[i]
+                del opponent_buildings_hit[i]
+                i -= 1
+            i += 1
 
 
 
@@ -709,6 +712,10 @@ class RobotController:
             if enemy_unit is None:
                 print('unit_attack_location(): invalid enemy unit id')
                 return False
+            
+            #if attacking unit is out of range of retaliation, move on
+            if self.get_chebyshev_distance(attacking_unit.x, attacking_unit.y, enemy_unit.x, enemy_unit.y) > enemy_unit.attack_range:
+                continue
 
             if self.__game_state.damage_unit(attacking_unit_id, enemy_unit.defense):
                 return True #if killed, then simply return
@@ -721,6 +728,10 @@ class RobotController:
             if enemy_building is None:
                 print('unit_attack_location(): invalid enemy building id')
                 return False
+            
+            #if the attacking building is out of range of retaliation, move on
+            if self.get_chebyshev_distance(attacking_unit.x, attacking_unit.y, enemy_building.x, enemy_building.y) > enemy_building.attack_range:
+                continue
 
             if self.__game_state.damage_unit(attacking_unit_id, enemy_building.defense):
                 return True #if killed, then simply return
@@ -1071,7 +1082,7 @@ class RobotController:
         
 
 
-    def explore_for_attack(self, explorer_unit_id: int, explore_building_id: int, target_unit_id: int):
+    def explore_for_attack(self, t_unit_id: int, explore_building_id: int, target_unit_id: int):
         '''
         Increases target unit strength by 2 (including those that originally has damage of 0)
         
@@ -1148,6 +1159,10 @@ class RobotController:
         if engineer is None:
             print('can_build_bridge(): invalid attacking unit id')
             return False
+        
+        #robustly checks ally team control, but is tested for in the first check
+        if engineer.team != self.__team:
+            print('can_build_bridge(): can only control ally engineers')
         
         if engineer.type != UnitType.ENGINEER:
             print('can_build_bridge(): unit is not an engineer')
@@ -1266,8 +1281,8 @@ class RobotController:
         #unit actions per turn decrement
         healer_unit.turn_actions_remaining -= 1
 
-        #heal
-        target_unit.health = max(target_unit.type.health, target_unit.health + healer_unit.type.heal_amount)
+        #heal, can only heal until full health
+        target_unit.health = min(target_unit.type.health, target_unit.health + healer_unit.type.heal_amount)
     
 
     '''
@@ -1275,9 +1290,10 @@ class RobotController:
     Rat Functionalities
     -----------------------
     '''
-    def can_harm_farm(self, rat_id: int) -> bool:
+    def can_harm_farm(self, rat_id: int, farm_id: int) -> bool:
         '''
         Checks if the specified unit is a Rat and if it can harm farming resources.
+        Checks if the ally farm_id is specified
         '''
         if rat_id not in self.__game_state.units[self.__team]:
             print("can_harm_farm(): invalid rat_id")
@@ -1285,31 +1301,43 @@ class RobotController:
 
         rat_unit = self.__game_state.get_unit_from_id(rat_id)
 
+        farm_building = self.get_building_from_id(farm_id)
+        if farm_building is None:
+            print('can_harm_farm(): farm_id is not a valid farm')
+            return False
+        
+        if farm_building.type not in self.__game_state.FARMS:
+            print('can_harm_farm(): farm_id is not a valid farm')
+            return False
+        
+        if farm_building.team != self.__team:
+            print('can_harm_farm(): can only harm when on an ally farm')
+
         if rat_unit is None or rat_unit.type != UnitType.RAT:
             print("can_harm_farm(): unit is not a Rat")
+            return False
+        
+        if not (rat_unit.x == farm_building.x and rat_unit.y == farm_building.y):
+            print("can_harm_farm(): target building is not an ally farm")
             return False
 
         return True
 
-    def harm_farm(self, rat_id: int) -> bool:
+    def harm_farm(self, rat_id: int, farm_id: int) -> bool:
         '''
-        Applies Rat's farming penalties to both teams.
+        Applies Rat's farming penalties to both teams. Rat must be on an ally farm
         '''
-        if not self.can_harm_farm(rat_id):
+        #checks if rat is valid, given enemy farm is valid
+        if not self.can_harm_farm(rat_id, farm_id):
             return False
 
         # Apply penalties
-        self.__game_state.balance[self.get_enemy_team()] *= GameConstants.RAT_OWN_FARM_DAMAGE_MULTIPLIER
-        self.__game_state.balance[self.__team] *= GameConstants.RAT_OPPONENT_FARM_DAMAGE_MULTIPLIER
+        self.__game_state.balance[self.get_enemy_team()] *= GameConstants.RAT_OPPONENT_FARM_DAMAGE_MULTIPLIER
+        self.__game_state.balance[self.get_enemy_team()] //= 1 #floor it to keep integers
+
+        self.__game_state.balance[self.__team] *= GameConstants.RAT_OWN_FARM_DAMAGE_MULTIPLIER
+        self.__game_state.balance[self.__team] //= 1 #floor balance to keep integer
 
         # Disband the Rat after effect is applied
         self.disband_unit(rat_id)
         return True
-
-    def auto_harm_farm(self):
-        '''
-        Automatically triggers all Rats on the team to apply farming penalties.
-        '''
-        for unit in self.__game_state.units[self.__team].values():
-            if unit.type == UnitType.RAT:
-                self.harm_farm(unit.id)
