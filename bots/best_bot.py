@@ -5,6 +5,7 @@ from src.game_constants import Team, Tile, GameConstants, Direction, BuildingTyp
 
 from src.units import Unit
 from src.buildings import Building
+from collections import deque
 
 class BotPlayer(Player):
 
@@ -37,6 +38,49 @@ class BotPlayer(Player):
         self.farms_built = 0  # Track farm count
         pass
     
+    def path_to_location(self, rc : RobotController, starting_x, starting_y, end_x, end_y):
+        possibilities = rc.get_unit_placeable_map()
+        DIRECTIONS = {
+            (0, 1): Direction.UP,
+            (0, -1): Direction.DOWN,
+            (1, 0): Direction.RIGHT,
+            (-1, 0): Direction.LEFT,
+            (1, 1): Direction.UP_RIGHT,
+            (-1, 1): Direction.UP_LEFT,
+            (1, -1): Direction.DOWN_RIGHT,
+            (-1, -1): Direction.DOWN_LEFT
+        }
+
+        queue = deque([(starting_x, starting_y, [])])
+        
+        visited = set()
+        visited.add((starting_x, starting_y))
+
+        while queue:
+            x, y, path = queue.popleft()
+            if (x, y) == (end_x, end_y):
+                return path
+
+            for (dx, dy), direction in DIRECTIONS.items():
+                new_x, new_y = x + dx, y + dy
+
+                if (0 <= new_x < len(possibilities) and 
+                    0 <= new_y < len(possibilities[0]) and
+                    possibilities[new_x][new_y] and  
+                    (new_x, new_y) not in visited): 
+
+                    queue.append((new_x, new_y, path + [direction]))
+                    visited.add((new_x, new_y))
+                    
+        return []
+
+    def move_unit(self, rc, unit_id, directions):
+        for direction in directions:
+            if rc.can_move_unit_in_direction(unit_id, direction): 
+                rc.move_unit_in_direction(unit_id, direction)  
+            else:
+                break
+
     def play_turn(self, rc: RobotController):
         turn = rc.get_turn()
         balance = rc.get_balance(rc.get_ally_team())
