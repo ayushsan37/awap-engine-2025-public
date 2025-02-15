@@ -44,7 +44,7 @@ class BotPlayer(Player):
             if place_x != -1:
                 rc.build_building(BuildingType.EXPLORER_BUILDING, place_x,place_y)
             self.built_explorer = True
-
+     
                 
 
         # Train an Explorer for gold gathering
@@ -70,7 +70,7 @@ class BotPlayer(Player):
             if possible_moves:
                 rc.move_unit_in_direction(unit.id, possible_moves[0])
                 return
-            
+        #Attack Enemies   
         for unit in units:
             for enem in unitsEnem:
                 if rc.can_unit_attack(unit.id,enem.id):
